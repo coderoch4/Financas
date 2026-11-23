@@ -238,4 +238,3 @@ export default function Page() {
   if (session === undefined) return <p className="p-6 text-sm text-stone-500">Carregando…</p>;
   return session ? <App key={session.user.id} session={session} /> : <Auth />;
 }
-""
