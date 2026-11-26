@@ -1,1 +1,29 @@
 @import "tailwindcss";
+
+/* Tema claro (cinza quente, sem branco puro) */
+:root {
+  --s50: #f2f0eb; --s100: #e8e5de; --s200: #d9d5cb; --s300: #b9b4a8; --s400: #8f8a7e;
+  --s500: #6a655a; --s600: #55514a; --s700: #3f3c36; --s900: #211f1b;
+  --surface: #fbfaf7; --a50: #e2f2ee;
+  color-scheme: light;
+}
+/* Tema escuro */
+.dark {
+  --s50: #0e1317; --s100: #1b232a; --s200: #2a343d; --s300: #3d4a55; --s400: #6b7a87;
+  --s500: #8b99a5; --s600: #a7b3bd; --s700: #c3ccd3; --s900: #e9edf0;
+  --surface: #151c22; --a50: #143530;
+  color-scheme: dark;
+}
+
+/* As classes slate-* e bg-surface passam a seguir o tema; accent-* é a cor de destaque (verde-azulado) */
+@theme inline {
+  --color-slate-50: var(--s50); --color-slate-100: var(--s100); --color-slate-200: var(--s200);
+  --color-slate-300: var(--s300); --color-slate-400: var(--s400); --color-slate-500: var(--s500);
+  --color-slate-600: var(--s600); --color-slate-700: var(--s700); --color-slate-900: var(--s900);
+  --color-surface: var(--surface);
+  --color-accent-50: var(--a50); --color-accent-100: #c8e8e0; --color-accent-200: #9dd5c9;
+  --color-accent-500: #14a392; --color-accent-600: #0f857a; --color-accent-700: #0c6b63; --color-accent-800: #0a544e;
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+}
+
+body { background: var(--s50); color: var(--s900); }

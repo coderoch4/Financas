@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
+import { LayoutDashboard, TrendingDown, TrendingUp, CreditCard, Settings, LogOut, Sun, Moon, Eye, EyeOff, type LucideIcon } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 type Exp = { id: string; date: string; description: string; category: string; bank: string; method: string; amount: number; card_id?: string | null };
@@ -11,14 +12,15 @@ type Card = { id: string; name: string; bank: string | null; closing_day: number
 type Inst = { id: string; description: string; category: string; card_id: string | null; total: number; n: number; start_month: string; paid_ahead: number };
 type Res = PromiseLike<{ error: { message: string } | null }>;
 
-const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+let hidden = false; // quando true, todos os valores em R$ aparecem como ••••
+const brl = (n: number) => (hidden ? "R$ ••••" : n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
 const sum = (a: number[]) => a.reduce((s, x) => s + x, 0);
 const METHODS = ["Crédito", "Débito", "Pix", "Dinheiro", "Boleto", "Transferência", "Vale (VR/VA)"];
 const TYPES = ["Hora extra", "Trabalho externo", "Freelance", "Bônus / 13º", "Rendimentos", "Reembolso", "VR/VA", "Outros"];
 const today = () => new Date().toLocaleDateString("sv-SE");
-const inp = "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-violet-500 focus:outline-2 focus:outline-violet-200";
-const btn = "rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500";
-const card = "rounded-2xl border border-slate-100 bg-white p-4 shadow-sm";
+const inp = "w-full rounded-xl border border-slate-200 bg-surface px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-accent-500 focus:outline-2 focus:outline-accent-200";
+const btn = "rounded-xl bg-accent-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-accent-700 disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-500";
+const card = "rounded-2xl border border-slate-100 bg-surface p-4 shadow-sm";
 const CAT_ICON: Record<string, string> = { "Moradia": "🏠", "Contas da casa": "💡", "Internet e telefone": "📶", "Mercado": "🛒", "Restaurantes e delivery": "🍔", "Uber / 99": "🚗", "Transporte público": "🚌", "Combustível": "⛽", "Carro": "🔧", "Saúde": "🩺", "Farmácia": "💊", "Educação": "🎓", "Lazer": "🎬", "Hobby": "🎨", "Viagens": "✈️", "Assinaturas": "📺", "Vestuário": "👕", "Beleza e cuidados": "🪮", "Pets": "🐾", "Presentes e doações": "🎁", "Impostos e taxas": "🧾", "Investimentos": "📈", "Dívidas e parcelas": "💳", "Outros": "📦" };
 const BANK_COLOR: Record<string, string> = { "Nubank": "#8A05BE", "Itaú": "#EC7000", "Bradesco": "#CC092F", "Banco do Brasil": "#F9D400", "Caixa": "#0070AF", "Santander": "#EC0000", "Inter": "#FF7A00", "C6 Bank": "#242424", "BTG Pactual": "#001E62", "PicPay": "#11C76F", "Mercado Pago": "#00B1EA", "XP": "#111111", "Sicoob": "#003641", "Banrisul": "#0A5CA8", "Neon": "#00A5B5", "Dinheiro (espécie)": "#16A34A", "Vale (VR/VA)": "#F59E0B" };
 const catIcon = (n: string) => CAT_ICON[n] ?? "🏷️";
@@ -31,6 +33,22 @@ const addM = (ym: string, k: number) => { const [y, m] = ym.split("-").map(Numbe
 const diffM = (a: string, b: string) => { const [y1, m1] = a.split("-").map(Number); const [y2, m2] = b.split("-").map(Number); return (y1 - y2) * 12 + (m1 - m2); };
 const day = (ym: string, d: number) => { const [y, m] = ym.split("-").map(Number); return `${ym}-${pad(Math.min(d, new Date(y, m, 0).getDate()))}`; };
 const dmy = (iso: string) => iso.split("-").reverse().join("/");
+
+function ThemeToggle({ onDark = false }: { onDark?: boolean }) {
+  const [dark, setDark] = useState(false);
+  useEffect(() => { setDark(document.documentElement.classList.contains("dark")); }, []);
+  const toggle = () => {
+    const d = !dark;
+    setDark(d);
+    document.documentElement.classList.toggle("dark", d);
+    try { localStorage.setItem("theme", d ? "dark" : "light"); } catch {}
+  };
+  return (
+    <button onClick={toggle} aria-label="Alternar tema claro/escuro" title={dark ? "Tema claro" : "Tema escuro"} className={`rounded-xl p-2 ${onDark ? "text-white hover:bg-white/10" : "text-slate-500 hover:bg-slate-100"}`}>
+      {dark ? <Sun size={18} /> : <Moon size={18} />}
+    </button>
+  );
+}
 
 function Auth() {
   const [mode, setMode] = useState<"in" | "up">("in");
@@ -48,14 +66,15 @@ function Auth() {
     setMsg(error ? (/invalid login/i.test(error.message) ? "Usuário ou senha incorretos." : /already/i.test(error.message) ? "Esse usuário já existe." : error.message) : "");
   };
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-violet-700 via-violet-600 to-indigo-700 p-6">
+    <main className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-accent-800 via-accent-700 to-accent-600 p-6">
+      <div className="absolute right-4 top-4"><ThemeToggle onDark /></div>
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center text-white">
           <span className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/20 text-xl font-bold">R$</span>
           <h1 className="text-2xl font-bold">Minhas finanças</h1>
-          <p className="text-sm text-violet-200">Entre com seu usuário e senha</p>
+          <p className="text-sm text-accent-200">Entre com seu usuário e senha</p>
         </div>
-        <form onSubmit={submit} className="flex flex-col gap-3 rounded-3xl bg-white p-5 shadow-xl">
+        <form onSubmit={submit} className="flex flex-col gap-3 rounded-3xl bg-surface p-5 shadow-xl">
           <input name="user" required autoCapitalize="none" autoComplete="username" placeholder="Usuário" className={inp} />
           <input name="password" type="password" required minLength={6} autoComplete={mode === "in" ? "current-password" : "new-password"} placeholder="Senha" className={inp} />
           <button disabled={busy} className={btn}>{mode === "in" ? "Entrar" : "Criar conta"}</button>
@@ -72,7 +91,7 @@ function Auth() {
 function Row({ icon, badge, title, sub, amount, onDel }: { icon: React.ReactNode; badge?: React.ReactNode; title: string; sub: string; amount: number; onDel: () => void }) {
   return (
     <li className="flex items-center gap-3 py-2.5">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-lg">{icon}</span>
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-50 text-lg">{icon}</span>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-slate-900">{title}</p>
         <p className="truncate text-xs text-slate-500">{sub}</p>
@@ -94,6 +113,9 @@ function App({ session }: { session: Session }) {
   const [salary, setSalary] = useState(0);
   const [cards, setCards] = useState<Card[]>([]);
   const [inst, setInst] = useState<Inst[]>([]);
+  const [hide, setHide] = useState(() => { try { return localStorage.getItem("hide") === "1"; } catch { return false; } });
+  hidden = hide;
+  const toggleHide = () => { const v = !hide; setHide(v); try { localStorage.setItem("hide", v ? "1" : "0"); } catch {} };
 
   const load = useCallback(async () => {
     const [e, i, c, b, s, k, p] = await Promise.all([
@@ -158,32 +180,32 @@ function App({ session }: { session: Session }) {
     const parc = sum(virt.filter((x) => x.card_id === c.id).map((x) => x.amount));
     return { total: loose + parc, close: end, due: day(c.due_day > c.closing_day ? month : addM(month, 1), c.due_day) };
   };
-  const tabs = [["dash", "Resumo", "📊"], ["exp", "Despesas", "💸"], ["inc", "Receitas", "💰"], ["fat", "Faturas", "💳"], ["cfg", "Ajustes", "⚙️"]];
+  const tabs: [string, string, LucideIcon][] = [["dash", "Resumo", LayoutDashboard], ["exp", "Despesas", TrendingDown], ["inc", "Receitas", TrendingUp], ["fat", "Faturas", CreditCard], ["cfg", "Ajustes", Settings]];
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-20 text-slate-900 md:pb-0">
-      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white">
+    <div className="min-h-screen bg-slate-50 pb-28 text-slate-900 md:pb-0">
+      <header className="sticky top-0 z-10 border-b border-slate-200 bg-surface/80 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
-          <h1 className="flex items-center gap-2 text-lg font-bold"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 text-xs text-white">R$</span>Minhas finanças</h1>
-          <nav className="ml-6 hidden gap-1 md:flex">
-            {tabs.map(([k, l]) => (
-              <button key={k} onClick={() => setTab(k)} className={`rounded-lg px-3 py-1.5 text-sm ${tab === k ? "bg-violet-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}>{l}</button>
+          <h1 className="flex items-center gap-2 text-lg font-bold"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-accent-600 to-accent-500 text-xs text-white">R$</span><span className="hidden sm:inline">Minhas finanças</span></h1>
+          <nav className="ml-6 hidden gap-1 rounded-2xl bg-slate-100 p-1 md:flex">
+            {tabs.map(([k, l, Icon]) => (
+              <button key={k} onClick={() => setTab(k)} className={`flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-sm font-medium transition ${tab === k ? "bg-surface text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900"}`}><Icon size={16} className={tab === k ? "text-accent-600" : ""} />{l}</button>
             ))}
           </nav>
           <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className={inp + " ml-auto !w-auto"} aria-label="Mês" />
-          <button onClick={() => supabase.auth.signOut()} className="text-sm text-slate-500 hover:text-slate-900">Sair</button>
+          <button onClick={toggleHide} aria-label={hide ? "Mostrar valores" : "Ocultar valores"} title={hide ? "Mostrar valores" : "Ocultar valores"} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100">{hide ? <EyeOff size={18} /> : <Eye size={18} />}</button><ThemeToggle /><button onClick={() => supabase.auth.signOut()} aria-label="Sair" title="Sair" className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"><LogOut size={18} /></button>
         </div>
       </header>
 
       <main className="mx-auto flex max-w-5xl flex-col gap-4 p-4">
         {tab === "dash" && (<>
-          <section className="rounded-3xl bg-gradient-to-br from-violet-700 via-violet-600 to-indigo-600 p-5 text-white shadow-lg shadow-violet-200">
-            <p className="text-sm text-violet-200">Saldo do mês</p>
+          <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-accent-800 via-accent-700 to-accent-500 p-5 text-white shadow-lg shadow-accent-700/20"><span className="pointer-events-none absolute -right-8 -top-12 h-44 w-44 rounded-full bg-white/10" /><span className="pointer-events-none absolute -bottom-16 right-24 h-40 w-40 rounded-full bg-white/5" />
+            <div className="flex items-center gap-2"><p className="text-sm text-accent-200">Saldo do mês</p><button onClick={toggleHide} aria-label={hide ? "Mostrar valores" : "Ocultar valores"} className="rounded-lg p-1 text-accent-100 hover:bg-white/10">{hide ? <EyeOff size={16} /> : <Eye size={16} />}</button></div>
             <p className="mt-1 text-3xl font-bold tracking-tight md:text-4xl">{brl(saldo)}</p>
             <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
-              <div><p className="text-violet-200">↑ Receitas</p><p className="font-semibold">{brl(rec)}</p></div>
-              <div><p className="text-violet-200">↓ Despesas</p><p className="font-semibold">{brl(desp)}</p></div>
-              <div><p className="text-violet-200">Poupado</p><p className="font-semibold">{rec > 0 ? Math.round((saldo / rec) * 100) + "%" : "-"}</p></div>
+              <div><p className="text-accent-200">↑ Receitas</p><p className="font-semibold">{brl(rec)}</p></div>
+              <div><p className="text-accent-200">↓ Despesas</p><p className="font-semibold">{brl(desp)}</p></div>
+              <div><p className="text-accent-200">Poupado</p><p className="font-semibold">{hide ? "•••" : rec > 0 ? Math.round((saldo / rec) * 100) + "%" : "-"}</p></div>
             </div>
           </section>
           <div className="grid gap-4 md:grid-cols-3">
@@ -192,10 +214,10 @@ function App({ session }: { session: Session }) {
               <ul className="flex flex-col gap-4">
                 {byCat.filter((c) => c.spent > 0 || c.budget > 0).sort((a, b) => b.spent - a.spent).map((c) => {
                   const p = c.budget > 0 ? c.spent / c.budget : 0;
-                  const col = p > 1 ? "bg-rose-500" : p >= 0.8 ? "bg-amber-400" : "bg-violet-500";
+                  const col = p > 1 ? "bg-rose-500" : p >= 0.8 ? "bg-amber-400" : "bg-accent-500";
                   return (
                     <li key={c.id} className="flex items-center gap-3">
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-lg">{catIcon(c.name)}</span>
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-50 text-lg">{catIcon(c.name)}</span>
                       <div className="min-w-0 flex-1">
                         <div className="flex justify-between gap-2 text-sm"><span className="truncate font-medium">{c.name}</span><span className="shrink-0 text-slate-700">{brl(c.spent)}{c.budget > 0 && <span className="text-slate-400"> / {brl(c.budget)}</span>}</span></div>
                         {c.budget > 0 && <div className="mt-1.5 h-2 rounded-full bg-slate-100"><div className={`h-2 rounded-full ${col}`} style={{ width: Math.min(p, 1) * 100 + "%" }} /></div>}
@@ -286,13 +308,13 @@ function App({ session }: { session: Session }) {
             <ul className="mt-3 divide-y divide-slate-100">
               {inst.map((p) => { const na = nAct(p); const done = Math.min(Math.max(diffM(thisM, p.start_month) + 1, 0), na); const c = cardOf(p.card_id); return (
                 <li key={p.id} className="flex items-center gap-3 py-2.5">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-lg">{catIcon(p.category)}</span>
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-50 text-lg">{catIcon(p.category)}</span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{p.description}</p>
                     <p className="truncate text-xs text-slate-500">{c?.name ?? "Sem cartão"} · {done}/{na} · {brl(p.total / p.n)}/mês{p.paid_ahead > 0 && ` · ${p.paid_ahead} antecipada(s)`}</p>
-                    <div className="mt-1.5 h-1.5 rounded-full bg-slate-100"><div className="h-1.5 rounded-full bg-violet-500" style={{ width: (done / na) * 100 + "%" }} /></div>
+                    <div className="mt-1.5 h-1.5 rounded-full bg-slate-100"><div className="h-1.5 rounded-full bg-accent-500" style={{ width: (done / na) * 100 + "%" }} /></div>
                   </div>
-                  {done < na ? <button onClick={() => antecipar(p)} className="rounded-lg bg-violet-50 px-2 py-1 text-xs font-medium text-violet-700">Antecipar</button> : <span className="text-xs font-medium text-emerald-600">Quitado</span>}
+                  {done < na ? <button onClick={() => antecipar(p)} className="rounded-lg bg-accent-50 px-2.5 py-1 text-xs font-semibold text-accent-600">Antecipar</button> : <span className="text-xs font-medium text-emerald-600">Quitado</span>}
                   <button onClick={() => del("installments", p.id)} aria-label="Excluir" className="px-1 text-slate-300 hover:text-rose-600">✕</button>
                 </li>); })}
               {!inst.length && <p className="py-2 text-sm text-slate-500">Nenhum parcelamento cadastrado.</p>}
@@ -332,9 +354,9 @@ function App({ session }: { session: Session }) {
         </>)}
       </main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-5 border-t border-slate-200 bg-white md:hidden">
-        {tabs.map(([k, l, i]) => (
-          <button key={k} onClick={() => setTab(k)} className={`flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium ${tab === k ? "text-violet-600" : "text-slate-500"}`}><span className="text-lg">{i}</span>{l}</button>
+      <nav className="fixed inset-x-3 bottom-3 z-20 grid grid-cols-5 gap-1 rounded-2xl border border-slate-200 bg-surface/90 p-1.5 shadow-lg backdrop-blur md:hidden">
+        {tabs.map(([k, l, Icon]) => (
+          <button key={k} onClick={() => setTab(k)} className={`flex flex-col items-center gap-0.5 rounded-xl py-1.5 text-[11px] font-medium transition ${tab === k ? "bg-accent-50 text-accent-600" : "text-slate-500"}`}><Icon size={20} />{l}</button>
         ))}
       </nav>
     </div>
