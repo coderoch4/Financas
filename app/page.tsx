@@ -21,7 +21,7 @@ const today = () => new Date().toLocaleDateString("sv-SE");
 const inp = "w-full rounded-xl border border-slate-200 bg-surface px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-accent-500 focus:outline-2 focus:outline-accent-200";
 const btn = "rounded-xl bg-accent-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-accent-700 disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-500";
 const card = "rounded-2xl border border-slate-100 bg-surface p-4 shadow-sm";
-const CAT_ICON: Record<string, string> = { "Moradia": "🏠", "Contas da casa": "💡", "Internet e telefone": "📶", "Mercado": "🛒", "Restaurantes e delivery": "🍔", "Uber / 99": "🚗", "Transporte público": "🚌", "Combustível": "⛽", "Carro": "🔧", "Saúde": "🩺", "Farmácia": "💊", "Educação": "🎓", "Lazer": "🎬", "Hobby": "🎨", "Viagens": "✈️", "Assinaturas": "📺", "Vestuário": "👕", "Beleza e cuidados": "🪮", "Pets": "🐾", "Presentes e doações": "🎁", "Impostos e taxas": "🧾", "Investimentos": "📈", "Dívidas e parcelas": "💳", "Outros": "📦" };
+const CAT_ICON: Record<string, string> = { "Moradia": "🏠", "Contas da casa": "💡", "Internet e telefone": "📶", "Mercado": "🛒", "Restaurantes e delivery": "🍔", "Uber / 99": "🚗", "Transporte público": "🚌", "Combustível": "⛽", "Carro": "🔧", "Saúde": "🩺", "Farmácia": "💊", "Educação": "🎓", "Lazer": "🎬", "Hobby": "🎨", "Viagens": "✈️", "Assinaturas": "📺", "Vestuário": "👕", "Beleza e cuidados": "💈", "Pets": "🐾", "Presentes e doações": "🎁", "Impostos e taxas": "🧾", "Investimentos": "📈", "Dívidas e parcelas": "💳", "Outros": "📦" };
 const BANK_COLOR: Record<string, string> = { "Nubank": "#8A05BE", "Itaú": "#EC7000", "Bradesco": "#CC092F", "Banco do Brasil": "#F9D400", "Caixa": "#0070AF", "Santander": "#EC0000", "Inter": "#FF7A00", "C6 Bank": "#242424", "BTG Pactual": "#001E62", "PicPay": "#11C76F", "Mercado Pago": "#00B1EA", "XP": "#111111", "Sicoob": "#003641", "Banrisul": "#0A5CA8", "Neon": "#00A5B5", "Dinheiro (espécie)": "#16A34A", "Vale (VR/VA)": "#F59E0B" };
 const catIcon = (n: string) => CAT_ICON[n] ?? "🏷️";
 function BankLogo({ name }: { name: string }) {
@@ -61,7 +61,12 @@ function Auth() {
     if (user.length < 3) return setMsg("Usuário: mínimo 3 letras ou números, sem espaços.");
     const cred = { email: `${user}@financas.app`, password: String(f.get("password")) };
     setBusy(true);
-    const { error } = mode === "in" ? await supabase.auth.signInWithPassword(cred) : await supabase.auth.signUp(cred);
+    let error: { message: string } | null = null;
+    if (mode === "up") {
+      const r = await fetch("/api/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user, password: cred.password }) });
+      if (!r.ok) error = { message: (await r.json()).error ?? "Erro ao criar conta." };
+    }
+    if (!error) error = (await supabase.auth.signInWithPassword(cred)).error;
     setBusy(false);
     setMsg(error ? (/invalid login/i.test(error.message) ? "Usuário ou senha incorretos." : /already/i.test(error.message) ? "Esse usuário já existe." : error.message) : "");
   };
@@ -115,6 +120,8 @@ function App({ session }: { session: Session }) {
   const [inst, setInst] = useState<Inst[]>([]);
   const [hide, setHide] = useState(() => { try { return localStorage.getItem("hide") === "1"; } catch { return false; } });
   hidden = hide;
+  const [menu, setMenu] = useState(false);
+  const username = session.user.email?.split("@")[0] ?? "usuário";
   const toggleHide = () => { const v = !hide; setHide(v); try { localStorage.setItem("hide", v ? "1" : "0"); } catch {} };
 
   const load = useCallback(async () => {
@@ -193,7 +200,26 @@ function App({ session }: { session: Session }) {
             ))}
           </nav>
           <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className={inp + " ml-auto !w-auto"} aria-label="Mês" />
-          <button onClick={toggleHide} aria-label={hide ? "Mostrar valores" : "Ocultar valores"} title={hide ? "Mostrar valores" : "Ocultar valores"} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100">{hide ? <EyeOff size={18} /> : <Eye size={18} />}</button><ThemeToggle /><button onClick={() => supabase.auth.signOut()} aria-label="Sair" title="Sair" className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"><LogOut size={18} /></button>
+          <button onClick={toggleHide} aria-label={hide ? "Mostrar valores" : "Ocultar valores"} title={hide ? "Mostrar valores" : "Ocultar valores"} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100">{hide ? <EyeOff size={18} /> : <Eye size={18} />}</button><ThemeToggle /><div className="relative">
+            <button onClick={() => setMenu(!menu)} aria-label="Minha conta" aria-expanded={menu} className="flex items-center gap-2 rounded-full border border-slate-200 bg-surface p-1 hover:bg-slate-100 sm:pr-3">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-accent-600 to-accent-500 text-sm font-bold uppercase text-white">{username[0]}</span>
+              <span className="hidden max-w-28 truncate text-sm font-medium sm:inline">{username}</span>
+            </button>
+            {menu && (<>
+              <button aria-label="Fechar menu" onClick={() => setMenu(false)} className="fixed inset-0 z-10 cursor-default" />
+              <div className="absolute right-0 top-full z-20 mt-2 w-60 rounded-2xl border border-slate-200 bg-surface p-3 shadow-xl">
+                <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-accent-600 to-accent-500 text-lg font-bold uppercase text-white">{username[0]}</span>
+                  <div className="min-w-0">
+                    <p className="text-xs text-slate-500">Conectado como</p>
+                    <p className="truncate text-sm font-semibold">{username}</p>
+                  </div>
+                </div>
+                <p className="py-2 text-xs text-slate-500">Conta criada em {new Date(session.user.created_at).toLocaleDateString("pt-BR")}</p>
+                <button onClick={() => supabase.auth.signOut()} className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-100 py-2 text-sm font-medium hover:bg-slate-200"><LogOut size={16} />Sair da conta</button>
+              </div>
+            </>)}
+          </div>
         </div>
       </header>
 
