@@ -3,10 +3,12 @@ import { useCallback, useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 
-type Exp = { id: string; date: string; description: string; category: string; bank: string; method: string; amount: number };
+type Exp = { id: string; date: string; description: string; category: string; bank: string; method: string; amount: number; card_id?: string | null };
 type Inc = { id: string; date: string; type: string; description: string; amount: number };
 type Cat = { id: string; name: string; budget: number };
 type Bank = { id: string; name: string };
+type Card = { id: string; name: string; bank: string | null; closing_day: number; due_day: number };
+type Inst = { id: string; description: string; category: string; card_id: string | null; total: number; n: number; start_month: string; paid_ahead: number };
 type Res = PromiseLike<{ error: { message: string } | null }>;
 
 const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -17,12 +19,18 @@ const today = () => new Date().toLocaleDateString("sv-SE");
 const inp = "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-violet-500 focus:outline-2 focus:outline-violet-200";
 const btn = "rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-violet-700 disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500";
 const card = "rounded-2xl border border-slate-100 bg-white p-4 shadow-sm";
-const CAT_ICON: Record<string, string> = { "Moradia": "🏠", "Contas da casa": "💡", "Internet e telefone": "📶", "Mercado": "🛒", "Restaurantes e delivery": "🍔", "Uber / 99": "🚗", "Transporte público": "🚌", "Combustível": "⛽", "Carro": "🔧", "Saúde": "🩺", "Farmácia": "💊", "Educação": "🎓", "Lazer": "🎬", "Hobby": "🎨", "Viagens": "✈️", "Assinaturas": "📺", "Vestuário": "👕", "Beleza e cuidados": "💅", "Pets": "🐾", "Presentes e doações": "🎁", "Impostos e taxas": "🧾", "Investimentos": "📈", "Dívidas e parcelas": "💳", "Outros": "📦" };
+const CAT_ICON: Record<string, string> = { "Moradia": "🏠", "Contas da casa": "💡", "Internet e telefone": "📶", "Mercado": "🛒", "Restaurantes e delivery": "🍔", "Uber / 99": "🚗", "Transporte público": "🚌", "Combustível": "⛽", "Carro": "🔧", "Saúde": "🩺", "Farmácia": "💊", "Educação": "🎓", "Lazer": "🎬", "Hobby": "🎨", "Viagens": "✈️", "Assinaturas": "📺", "Vestuário": "👕", "Beleza e cuidados": "🪮", "Pets": "🐾", "Presentes e doações": "🎁", "Impostos e taxas": "🧾", "Investimentos": "📈", "Dívidas e parcelas": "💳", "Outros": "📦" };
 const BANK_COLOR: Record<string, string> = { "Nubank": "#8A05BE", "Itaú": "#EC7000", "Bradesco": "#CC092F", "Banco do Brasil": "#F9D400", "Caixa": "#0070AF", "Santander": "#EC0000", "Inter": "#FF7A00", "C6 Bank": "#242424", "BTG Pactual": "#001E62", "PicPay": "#11C76F", "Mercado Pago": "#00B1EA", "XP": "#111111", "Sicoob": "#003641", "Banrisul": "#0A5CA8", "Neon": "#00A5B5", "Dinheiro (espécie)": "#16A34A", "Vale (VR/VA)": "#F59E0B" };
 const catIcon = (n: string) => CAT_ICON[n] ?? "🏷️";
 function BankLogo({ name }: { name: string }) {
   return <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold" style={{ background: BANK_COLOR[name] ?? "#64748b", color: name === "Banco do Brasil" ? "#1e3a8a" : "#fff" }}>{name[0]}</span>;
 }
+
+const pad = (n: number) => String(n).padStart(2, "0");
+const addM = (ym: string, k: number) => { const [y, m] = ym.split("-").map(Number); const d = new Date(y, m - 1 + k, 1); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; };
+const diffM = (a: string, b: string) => { const [y1, m1] = a.split("-").map(Number); const [y2, m2] = b.split("-").map(Number); return (y1 - y2) * 12 + (m1 - m2); };
+const day = (ym: string, d: number) => { const [y, m] = ym.split("-").map(Number); return `${ym}-${pad(Math.min(d, new Date(y, m, 0).getDate()))}`; };
+const dmy = (iso: string) => iso.split("-").reverse().join("/");
 
 function Auth() {
   const [mode, setMode] = useState<"in" | "up">("in");
@@ -84,20 +92,26 @@ function App({ session }: { session: Session }) {
   const [cats, setCats] = useState<Cat[]>([]);
   const [banks, setBanks] = useState<Bank[]>([]);
   const [salary, setSalary] = useState(0);
+  const [cards, setCards] = useState<Card[]>([]);
+  const [inst, setInst] = useState<Inst[]>([]);
 
   const load = useCallback(async () => {
-    const [e, i, c, b, s] = await Promise.all([
+    const [e, i, c, b, s, k, p] = await Promise.all([
       supabase.from("expenses").select("*").order("date", { ascending: false }),
       supabase.from("incomes").select("*").order("date", { ascending: false }),
       supabase.from("categories").select("*").order("name"),
       supabase.from("banks").select("*").order("name"),
       supabase.from("settings").select("salary").maybeSingle(),
+      supabase.from("cards").select("*").order("name"),
+      supabase.from("installments").select("*").order("start_month"),
     ]);
     setExp((e.data ?? []).map((x) => ({ ...x, amount: Number(x.amount) })));
     setInc((i.data ?? []).map((x) => ({ ...x, amount: Number(x.amount) })));
     setCats((c.data ?? []).map((x) => ({ ...x, budget: Number(x.budget) })));
     setBanks(b.data ?? []);
     setSalary(Number(s.data?.salary ?? 0));
+    setCards(k.data ?? []);
+    setInst((p.data ?? []).map((x) => ({ ...x, total: Number(x.total) })));
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -106,11 +120,20 @@ function App({ session }: { session: Session }) {
   const add = (t: string) => async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const f = e.currentTarget;
-    await run(supabase.from(t).insert(Object.fromEntries(new FormData(f))));
+    await run(supabase.from(t).insert(Object.fromEntries(Array.from(new FormData(f)).map(([k, v]) => [k, v === "" ? null : v]))));
     f.reset();
   };
 
-  const mExp = exp.filter((x) => x.date.startsWith(month));
+  const thisM = today().slice(0, 7);
+  const cardOf = (id: string | null) => cards.find((c) => c.id === id);
+  const nAct = (p: Inst) => p.n - p.paid_ahead;
+  const virt: Exp[] = inst.flatMap((p) => {
+    const idx = diffM(month, p.start_month);
+    if (idx < 0 || idx >= nAct(p)) return [];
+    const c = cardOf(p.card_id);
+    return [{ id: `inst-${p.id}`, date: day(month, c?.due_day ?? 1), description: `${p.description} (${idx + 1}/${nAct(p)})`, category: p.category, bank: c?.bank ?? "", method: "Crédito", amount: p.total / p.n, card_id: p.card_id }];
+  });
+  const mExp = [...exp.filter((x) => x.date.startsWith(month)), ...virt];
   const mInc = inc.filter((x) => x.date.startsWith(month));
   const extra = sum(mInc.map((x) => x.amount));
   const rec = salary + extra;
@@ -118,7 +141,24 @@ function App({ session }: { session: Session }) {
   const saldo = rec - desp;
   const byCat = cats.map((c) => ({ ...c, spent: sum(mExp.filter((x) => x.category === c.name).map((x) => x.amount)) }));
   const byBank = banks.map((b) => ({ name: b.name, v: sum(mExp.filter((x) => x.bank === b.name).map((x) => x.amount)) })).filter((x) => x.v > 0);
-  const tabs = [["dash", "Resumo", "📊"], ["exp", "Despesas", "💸"], ["inc", "Receitas", "💰"], ["cfg", "Ajustes", "⚙️"]];
+  const antecipar = async (p: Inst) => {
+    const future = Math.max(0, nAct(p) - Math.max(diffM(thisM, p.start_month) + 1, 0));
+    if (!future) return alert("Não há parcelas futuras para antecipar.");
+    const v = prompt(`Quantas das ${future} parcelas futuras você quer antecipar agora? (as últimas saem primeiro)`, String(future));
+    const k = Math.min(future, Math.floor(Number(v)));
+    if (!k || k < 1) return;
+    const c = cardOf(p.card_id);
+    const r = await supabase.from("expenses").insert({ date: today(), description: `Antecipação: ${p.description} (${k}x)`, category: p.category, bank: c?.bank ?? null, method: "Crédito", amount: (p.total / p.n) * k });
+    if (r.error) return alert(r.error.message);
+    await run(supabase.from("installments").update({ paid_ahead: p.paid_ahead + k }).eq("id", p.id));
+  };
+  const invoice = (c: Card) => {
+    const end = day(month, c.closing_day), start = day(addM(month, -1), c.closing_day);
+    const loose = sum(exp.filter((x) => x.card_id === c.id && x.date > start && x.date <= end).map((x) => x.amount));
+    const parc = sum(virt.filter((x) => x.card_id === c.id).map((x) => x.amount));
+    return { total: loose + parc, close: end, due: day(c.due_day > c.closing_day ? month : addM(month, 1), c.due_day) };
+  };
+  const tabs = [["dash", "Resumo", "📊"], ["exp", "Despesas", "💸"], ["inc", "Receitas", "💰"], ["fat", "Faturas", "💳"], ["cfg", "Ajustes", "⚙️"]];
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20 text-slate-900 md:pb-0">
@@ -184,10 +224,11 @@ function App({ session }: { session: Session }) {
             <select name="bank" required className={inp}>{banks.map((b) => <option key={b.id} value={b.name}>{b.name}</option>)}</select>
             <select name="method" required className={inp}>{METHODS.map((m) => <option key={m}>{m}</option>)}</select>
             <input name="amount" type="number" step="0.01" min="0" required placeholder="Valor (R$)" className={inp + " sm:col-span-2"} />
-            <button className={btn + " sm:col-span-4"}>Adicionar despesa</button>
+            <select name="card_id" className={inp + " sm:col-span-2"}><option value="">Cartão (opcional)</option>{cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+            <button className={btn + " sm:col-span-2"}>Adicionar despesa</button>
           </form>
           <ul className={card + " divide-y divide-slate-100"}>
-            {mExp.map((x) => <Row key={x.id} icon={catIcon(x.category)} badge={<BankLogo name={x.bank} />} title={x.description} sub={`${x.date.split("-").reverse().join("/")} · ${x.category} · ${x.bank} · ${x.method}`} amount={x.amount} onDel={() => del("expenses", x.id)} />)}
+            {mExp.map((x) => <Row key={x.id} icon={catIcon(x.category)} badge={<BankLogo name={x.bank} />} title={x.description} sub={`${x.date.split("-").reverse().join("/")} · ${x.category} · ${x.bank} · ${x.method}`} amount={x.amount} onDel={() => (x.id.startsWith("inst-") ? alert("Parcela automática: gerencie na aba Faturas.") : del("expenses", x.id))} />)}
             {!mExp.length && <p className="py-2 text-sm text-slate-500">Nenhuma despesa neste mês.</p>}
           </ul>
         </>)}
@@ -205,6 +246,58 @@ function App({ session }: { session: Session }) {
             {mInc.map((x) => <Row key={x.id} icon="💰" title={x.type} sub={`${x.date.split("-").reverse().join("/")} · ${x.description ?? ""}`} amount={x.amount} onDel={() => del("incomes", x.id)} />)}
             {!mInc.length && <p className="py-2 text-sm text-slate-500">Nenhuma receita extra neste mês.</p>}
           </ul>
+        </>)}
+
+        {tab === "fat" && (<>
+          <section className={card}>
+            <h2 className="mb-3 text-sm font-semibold">Cartões · faturas de {month.split("-").reverse().join("/")}</h2>
+            <ul className="flex flex-col gap-2">
+              {cards.map((c) => { const v = invoice(c); return (
+                <li key={c.id} className="flex items-center gap-3 rounded-xl bg-slate-50 p-3">
+                  {c.bank ? <BankLogo name={c.bank} /> : <span>💳</span>}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold">{c.name}</p>
+                    <p className="text-xs text-slate-500">Fecha {dmy(v.close)} · Vence {dmy(v.due)}</p>
+                  </div>
+                  <span className="text-sm font-bold">{brl(v.total)}</span>
+                  <button onClick={() => del("cards", c.id)} aria-label="Excluir" className="px-1 text-slate-300 hover:text-rose-600">✕</button>
+                </li>); })}
+              {!cards.length && <p className="text-sm text-slate-500">Cadastre seu primeiro cartão abaixo.</p>}
+            </ul>
+            <form onSubmit={add("cards")} className="mt-3 grid gap-2 sm:grid-cols-5">
+              <input name="name" required placeholder="Nome (ex.: Nubank)" className={inp + " sm:col-span-2"} />
+              <select name="bank" className={inp}><option value="">Banco</option>{banks.map((b) => <option key={b.id} value={b.name}>{b.name}</option>)}</select>
+              <input name="closing_day" type="number" min="1" max="31" required placeholder="Dia que fecha" className={inp} />
+              <input name="due_day" type="number" min="1" max="31" required placeholder="Dia que vence" className={inp} />
+              <button className={btn + " sm:col-span-5"}>Adicionar cartão</button>
+            </form>
+          </section>
+          <section className={card}>
+            <h2 className="mb-3 text-sm font-semibold">Parcelamentos</h2>
+            <form onSubmit={add("installments")} className="grid gap-2 sm:grid-cols-6">
+              <input name="description" required placeholder="Descrição (ex.: Fatura em 6x)" className={inp + " sm:col-span-2"} />
+              <input name="total" type="number" step="0.01" min="0.01" required placeholder="Valor total" className={inp} />
+              <input name="n" type="number" min="1" max="60" required placeholder="Nº de parcelas" className={inp} />
+              <select name="card_id" className={inp}><option value="">Cartão</option>{cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+              <select name="category" required className={inp}>{cats.map((c) => <option key={c.id} value={c.name}>{catIcon(c.name)} {c.name}</option>)}</select>
+              <label className="text-xs text-slate-500 sm:col-span-3">1ª parcela na fatura de<input name="start_month" type="month" required defaultValue={thisM} className={inp + " mt-1"} /></label>
+              <button className={btn + " sm:col-span-3 sm:self-end"}>Adicionar parcelamento</button>
+            </form>
+            <ul className="mt-3 divide-y divide-slate-100">
+              {inst.map((p) => { const na = nAct(p); const done = Math.min(Math.max(diffM(thisM, p.start_month) + 1, 0), na); const c = cardOf(p.card_id); return (
+                <li key={p.id} className="flex items-center gap-3 py-2.5">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-lg">{catIcon(p.category)}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{p.description}</p>
+                    <p className="truncate text-xs text-slate-500">{c?.name ?? "Sem cartão"} · {done}/{na} · {brl(p.total / p.n)}/mês{p.paid_ahead > 0 && ` · ${p.paid_ahead} antecipada(s)`}</p>
+                    <div className="mt-1.5 h-1.5 rounded-full bg-slate-100"><div className="h-1.5 rounded-full bg-violet-500" style={{ width: (done / na) * 100 + "%" }} /></div>
+                  </div>
+                  {done < na ? <button onClick={() => antecipar(p)} className="rounded-lg bg-violet-50 px-2 py-1 text-xs font-medium text-violet-700">Antecipar</button> : <span className="text-xs font-medium text-emerald-600">Quitado</span>}
+                  <button onClick={() => del("installments", p.id)} aria-label="Excluir" className="px-1 text-slate-300 hover:text-rose-600">✕</button>
+                </li>); })}
+              {!inst.length && <p className="py-2 text-sm text-slate-500">Nenhum parcelamento cadastrado.</p>}
+            </ul>
+          </section>
         </>)}
 
         {tab === "cfg" && (<>
@@ -239,7 +332,7 @@ function App({ session }: { session: Session }) {
         </>)}
       </main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-4 border-t border-slate-200 bg-white md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-5 border-t border-slate-200 bg-white md:hidden">
         {tabs.map(([k, l, i]) => (
           <button key={k} onClick={() => setTab(k)} className={`flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium ${tab === k ? "text-violet-600" : "text-slate-500"}`}><span className="text-lg">{i}</span>{l}</button>
         ))}
