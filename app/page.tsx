@@ -63,8 +63,10 @@ function Auth() {
     setBusy(true);
     let error: { message: string } | null = null;
     if (mode === "up") {
-      const r = await fetch("/api/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user, password: cred.password }) });
-      if (!r.ok) error = { message: (await r.json()).error ?? "Erro ao criar conta." };
+      try {
+        const r = await fetch("/api/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user, password: cred.password }) });
+        if (!r.ok) error = { message: (await r.json().catch(() => ({}))).error ?? "Não foi possível criar a conta (erro no servidor)." };
+      } catch { error = { message: "Sem conexão com o servidor." }; }
     }
     if (!error) error = (await supabase.auth.signInWithPassword(cred)).error;
     setBusy(false);
